@@ -90,6 +90,64 @@ task :convert, [:file] do |t, args|
   puts ranges.to_yaml.gsub("\"","")
 end
 
+desc "Take a JSON language Definition from the Unicode Consortium and Turn print list of characters and ranges"
+task :uni_consortium_convertion, [:file_path, :language_key] do |t, args|
+  require 'json'
+  file_path = args.file_path
+  lang_key = args.language_key
+
+  code_points = []
+  lang_data = File.read(file_path)
+  main_data = JSON.parse lang_data
+  lang_entries = main_data["main"][lang_key]["characters"]
+  lang_entries.keys.each do |key|
+    entry = lang_entries[key]
+    # remove leading and trailing square brackets
+    entry_vals = entry[1..entry.size - 2]
+    if entry_vals
+      # remove use of double \\
+      entry_vals.gsub!("\\\\")
+      entry_vals.codepoints { |cp| code_points.push cp }
+    end
+  end
+  code_points.uniq!.sort!
+
+  ranges = compact_ranges(code_points)
+  ranges.map { |range| puts range.is_a?(Range) ? "- !ruby/range #{range}" : "- #{range}" }
+end
+
+def compact_ranges(array)
+  array = array.sort
+  result = []
+  current_range = nil
+
+  (array.length - 1).times do |n|
+    consecutive = (array[n+1] - array[n]) == 1 ? true : false
+
+    if consecutive
+      result.pop if result.last == array[n]
+
+      if current_range
+        current_range = current_range.min..array[n+1]
+      else
+        current_range = array[n]..array[n+1]
+      end
+    else
+      result.pop if result.last == array[n]
+      if current_range
+        result << current_range
+        current_range = nil
+      else
+        result << array[n]
+      end
+      result << array[n+1]
+    end
+  end
+  result << current_range if current_range
+
+  result
+end
+
 desc "Verifies that a language loads correctly."
 task :test, [:language] do |t, args|
   unless args.language
